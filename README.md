@@ -1,2 +1,2 @@
 # SQL-Queries-Repo
-Repositorio de 
+Repositorio de queries 

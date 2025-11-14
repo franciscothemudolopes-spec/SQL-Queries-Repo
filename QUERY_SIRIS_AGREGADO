@@ -1,0 +1,88 @@
+# SQL-Queries-Repo
+
+DECLARE @Termo NVARCHAR(100) = 'Cliente';  -- ALTERAR AQUI
+
+PRINT 'Procurando por: ' + @Termo + ' nas BDs SIRIS';
+PRINT '============================================';
+
+-- Tabela temporária para resultados
+CREATE TABLE #Resultados (
+    BD NVARCHAR(128),
+    Tipo NVARCHAR(50),
+    Nome NVARCHAR(128),
+    Fluxo NVARCHAR(500)
+);
+
+-- Variáveis para cursor
+DECLARE @BD NVARCHAR(128);
+DECLARE @SQL NVARCHAR(MAX);
+
+-- Cursor para cada BD SIRIS
+DECLARE bd_cursor CURSOR FOR
+SELECT name 
+FROM sys.databases 
+WHERE name LIKE 'SIRIS%' 
+AND state_desc = 'ONLINE'
+ORDER BY name;
+
+OPEN bd_cursor;
+FETCH NEXT FROM bd_cursor INTO @BD;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    BEGIN TRY
+        -- TABELAS que contêm o termo
+        SET @SQL = 'INSERT INTO #Resultados 
+                    SELECT ''' + @BD + ''', ''TABELA'', name, ''' + @BD + '.'' + SCHEMA_NAME(schema_id) + ''.'' + name
+                    FROM [' + @BD + '].sys.tables 
+                    WHERE name LIKE ''%' + @Termo + '%''';
+        EXEC(@SQL);
+        
+        -- VIEWS que contêm o termo
+        SET @SQL = 'INSERT INTO #Resultados 
+                    SELECT ''' + @BD + ''', ''VIEW'', name, ''' + @BD + '.'' + SCHEMA_NAME(schema_id) + ''.'' + name
+                    FROM [' + @BD + '].sys.views 
+                    WHERE name LIKE ''%' + @Termo + '%''';
+        EXEC(@SQL);
+        
+        -- SPs que contêm o termo
+        SET @SQL = 'INSERT INTO #Resultados 
+                    SELECT ''' + @BD + ''', ''SP'', name, ''' + @BD + '.'' + SCHEMA_NAME(schema_id) + ''.'' + name
+                    FROM [' + @BD + '].sys.procedures 
+                    WHERE name LIKE ''%' + @Termo + '%''';
+        EXEC(@SQL);
+        
+    END TRY
+    BEGIN CATCH
+        PRINT 'Erro na BD ' + @BD + ': ' + ERROR_MESSAGE();
+    END CATCH
+    
+    FETCH NEXT FROM bd_cursor INTO @BD;
+END;
+
+CLOSE bd_cursor;
+DEALLOCATE bd_cursor;
+
+-- Mostrar resultados
+SELECT 
+    BD,
+    Tipo,
+    Nome,
+    Fluxo
+FROM #Resultados
+ORDER BY BD, Tipo, Nome;
+
+-- Resumo
+SELECT 
+    'RESUMO' as Info,
+    COUNT(*) as Total_Encontrados,
+    COUNT(DISTINCT BD) as BDs_Com_Resultados,
+    SUM(CASE WHEN Tipo = 'TABELA' THEN 1 ELSE 0 END) as Tabelas,
+    SUM(CASE WHEN Tipo = 'VIEW' THEN 1 ELSE 0 END) as Views,
+    SUM(CASE WHEN Tipo = 'SP' THEN 1 ELSE 0 END) as SPs
+FROM #Resultados;
+
+DROP TABLE #Resultados;
+
+PRINT '============================================';
+PRINT 'Pesquisa concluída para: ' + @Termo;
